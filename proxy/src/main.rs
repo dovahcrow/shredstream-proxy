@@ -14,6 +14,7 @@ use std::{
     time::Duration,
 };
 
+use anyhow::anyhow;
 use arc_swap::ArcSwap;
 use clap::{arg, Parser};
 use crossbeam_channel::{Receiver, RecvError, Sender};
@@ -22,7 +23,7 @@ use signal_hook::consts::{SIGINT, SIGTERM};
 use solana_client::client_error::{reqwest, ClientError};
 use solana_metrics::set_host_id;
 use solana_perf::deduper::Deduper;
-use solana_sdk::signature::read_keypair_file;
+use solana_sdk::signature::{read_keypair_file, Keypair};
 use solana_streamer::streamer::StreamerReceiveStats;
 use thiserror::Error;
 use tokio::runtime::Runtime;
@@ -64,7 +65,7 @@ struct ShredstreamArgs {
 
     /// Path to keypair file used to authenticate with the backend.
     #[arg(long, env)]
-    auth_keypair: PathBuf,
+    auth_keypair: String,
 
     /// Desired regions to receive heartbeats from.
     /// Receives `n` different streams. Requires at least 1 region, comma separated.
@@ -329,14 +330,21 @@ fn start_heartbeat(
     runtime: Runtime,
     metrics: Arc<ShredMetrics>,
 ) -> JoinHandle<()> {
-    let auth_keypair = Arc::new(
-        read_keypair_file(Path::new(&args.auth_keypair)).unwrap_or_else(|e| {
-            panic!(
-                "Unable to parse keypair file. Ensure that file {:?} is readable. Error: {e}",
-                args.auth_keypair
-            )
-        }),
-    );
+    pub fn load_keypair(src: &str) -> Result<Keypair, anyhow::Error> {
+        let Ok(decoded) = bs58::decode(src).into_vec() else {
+            let path = shellexpand::full(&src).map_err(|e| anyhow!(e))?;
+            let path = PathBuf::from(&*path).canonicalize()?;
+            return Ok(read_keypair_file(&path).map_err(|_| anyhow!("Cannot read keypair"))?);
+        };
+        Ok(Keypair::from_bytes(&decoded).map_err(|_| anyhow!("Cannot read pubkey"))?)
+    }
+
+    let auth_keypair = Arc::new(load_keypair(&args.auth_keypair).unwrap_or_else(|e| {
+        panic!(
+            "Unable to parse keypair file. Ensure that file {:?} is readable. Error: {e}",
+            args.auth_keypair
+        )
+    }));
 
     heartbeat::heartbeat_loop_thread(
         args.block_engine_url.clone(),
