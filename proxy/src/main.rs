@@ -3,7 +3,7 @@ use std::{
     io::{Error, ErrorKind},
     net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs},
     panic,
-    path::{Path, PathBuf},
+    path::PathBuf,
     str::FromStr,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -29,10 +29,13 @@ use thiserror::Error;
 use tokio::runtime::Runtime;
 use tonic::Status;
 
-use crate::{forwarder::ShredMetrics, token_authenticator::BlockEngineConnectionError};
+use crate::{
+    forwarder::ShredMetrics, metric::serve_metrics, token_authenticator::BlockEngineConnectionError,
+};
 
 mod forwarder;
 mod heartbeat;
+mod metric;
 mod token_authenticator;
 
 #[derive(Clone, Debug, Parser)]
@@ -119,6 +122,9 @@ struct CommonArgs {
     /// Number of threads to use. Defaults to use up to 4.
     #[arg(long, env)]
     num_threads: Option<usize>,
+
+    #[arg(long, env)]
+    metrics_port: u16,
 }
 
 #[derive(Debug, Error)]
@@ -230,7 +236,12 @@ fn main() -> Result<(), ShredstreamProxyError> {
 
     let metrics = Arc::new(ShredMetrics::new());
 
-    let runtime = Runtime::new()?;
+    let runtime = Runtime::new().unwrap();
+    runtime.spawn(serve_metrics(
+        ([0, 0, 0, 0], args.metrics_port).into(),
+        exit.clone(),
+    ));
+
     let mut thread_handles = vec![];
     if let ProxySubcommands::Shredstream(args) = shredstream_args {
         let heartbeat_hdl =

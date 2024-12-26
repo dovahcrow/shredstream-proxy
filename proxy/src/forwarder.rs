@@ -28,7 +28,7 @@ use solana_streamer::{
     streamer::StreamerReceiveStats,
 };
 
-use crate::{resolve_hostname_port, ShredstreamProxyError};
+use crate::{metric::SHRED_RECEIVED, resolve_hostname_port, ShredstreamProxyError};
 
 // values copied from https://github.com/solana-labs/solana/blob/33bde55bbdde13003acf45bb6afe6db4ab599ae4/core/src/sigverify_shreds.rs#L20
 pub const DEDUPER_FALSE_POSITIVE_RATE: f64 = 0.001;
@@ -149,6 +149,8 @@ fn recv_from_channel_and_send_multiple_dest(
     metrics
         .agg_received
         .fetch_add(packet_batch.len() as u64, Ordering::Relaxed);
+    SHRED_RECEIVED.inc_by(packet_batch.len() as u64);
+
     debug!(
         "Got batch of {} packets, total size in bytes: {}",
         packet_batch.len(),
