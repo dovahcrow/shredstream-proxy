@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.4.0
-FROM --platform=linux/amd64 rust:1.79-slim-bullseye as builder
+FROM --platform=linux/amd64 rust:bookworm as builder
 
 RUN apt-get -qq update && apt-get install -qq -y ca-certificates libssl-dev protobuf-compiler pkg-config libudev-dev zlib1g-dev llvm clang cmake make libprotobuf-dev g++
 RUN rustup component add rustfmt && update-ca-certificates
@@ -16,8 +16,8 @@ RUN --mount=type=cache,mode=0777,target=/home/root/app/target \
     cargo build --release && cp target/release/jito-* ./
 
 ################################################################################
-FROM --platform=linux/amd64 debian:bullseye-slim as base_image
-RUN apt-get -qq update && apt-get install -qq -y ca-certificates libssl1.1 && rm -rf /var/lib/apt/lists/*
+FROM --platform=linux/amd64 debian:bookworm-slim as base_image
+RUN apt-get -qq update && apt-get install -qq -y ca-certificates libssl-dev && rm -rf /var/lib/apt/lists/*
 
 ################################################################################
 FROM base_image as shredstream_proxy
